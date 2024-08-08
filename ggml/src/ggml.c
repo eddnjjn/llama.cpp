@@ -23113,6 +23113,14 @@ void gguf_get_meta_data(const struct gguf_context * ctx, void * data) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#if defined(__aarch64__)
+#if defined(__linux__)
+#include <sys/auxv.h>
+#elif defined(__APPLE__)
+#include <sys/sysctl.h>
+#endif
+#endif
+
 int ggml_cpu_has_avx(void) {
 #if defined(__AVX__)
     return 1;
@@ -23178,16 +23186,47 @@ int ggml_cpu_has_fma(void) {
 }
 
 int ggml_cpu_has_neon(void) {
-#if defined(__ARM_NEON)
-    return 1;
+#if defined(__aarch64__)
+    static int neon_supported = -1;
+    if (neon_supported == -1) {
+#if defined(__linux__)
+        uint32_t hwcap = getauxval(AT_HWCAP);
+        neon_supported = !!(hwcap & HWCAP_ASIMD);
+#elif defined(__APPLE__)
+        int oldp = 0;
+        size_t size = sizeof(oldp);
+        if (sysctlbyname("hw.optional.AdvSIMD", &oldp, &size, NULL, 0) != 0) {
+            oldp = 0;
+        }
+        neon_supported = oldp;
+#elif defined(__ARM_NEON)
+        neon_supported = 1;
+#else
+        neon_supported = 0;
+#endif
+    }
+    return neon_supported;
 #else
     return 0;
 #endif
 }
 
 int ggml_cpu_has_sve(void) {
-#if defined(__ARM_FEATURE_SVE)
-    return 1;
+#if defined(__aarch64__)
+    static int sve_supported = -1;
+    if (sve_supported == -1) {
+#if defined(__linux__)
+        uint32_t hwcap = getauxval(AT_HWCAP);
+        sve_supported = !!(hwcap & HWCAP_SVE);
+#elif defined(__APPLE__)
+        sve_supported = 0;
+#elif defined(__ARM_FEATURE_SVE)
+        sve_supported = 1;
+#else
+        sve_supported = 0;
+#endif
+    }
+    return sve_supported;
 #else
     return 0;
 #endif
@@ -23326,8 +23365,26 @@ int ggml_cpu_has_vsx(void) {
 }
 
 int ggml_cpu_has_matmul_int8(void) {
-#if defined(__ARM_FEATURE_MATMUL_INT8)
-    return 1;
+#if defined(__aarch64__)
+    static int i8mm_supported = -1;
+    if (i8mm_supported == -1) {
+#if defined(__linux__)
+        uint32_t hwcap2 = getauxval(AT_HWCAP2);
+        i8mm_supported = !!(hwcap2 & HWCAP2_I8MM);
+#elif defined(__APPLE__)
+        int oldp = 0;
+        size_t size = sizeof(oldp);
+        if (sysctlbyname("hw.optional.arm.FEAT_I8MM", &oldp, &size, NULL, 0) != 0) {
+            oldp = 0;
+        }
+        i8mm_supported = oldp;
+#elif defined(__ARM_FEATURE_MATMUL_INT8)
+        i8mm_supported = 1;
+#else
+        i8mm_supported = 0;
+#endif
+    }
+    return i8mm_supported;
 #else
     return 0;
 #endif
